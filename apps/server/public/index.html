@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Run Coach Simulator</title>
+<style>
+  :root {
+    --bg: #f6f5f1; --card: #ffffff; --text: #1f1e1c; --muted: #6b6a66; --line: #e3e1da;
+    --run: #2f6fd0; --run-bg: #e3edfb; --walk: #d0662f; --walk-bg: #fbe9e0; --accent: #2f6fd0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #161615; --card: #201f1d; --text: #ecebe6; --muted: #a3a29c; --line: #34332f;
+      --run: #7aa8f0; --run-bg: #1d2c44; --walk: #f09a6c; --walk-bg: #43271a; --accent: #7aa8f0;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 820px) { main { grid-template-columns: 320px minmax(0, 1fr); } }
+  h1 { font-size: 20px; margin: 0 0 4px; grid-column: 1 / -1; }
+  .sub { color: var(--muted); margin: 0; grid-column: 1 / -1; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+  input, select, textarea { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; width: 100%; }
+  textarea { min-height: 72px; resize: vertical; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  button { font: inherit; border-radius: 8px; padding: 8px 14px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  .error { color: #c0392b; font-size: 13px; min-height: 1em; margin: 6px 0 0; }
+  .step { border-radius: 12px; padding: 18px; text-align: center; background: var(--bg); }
+  .step [data-kind="run"], .step [data-kind="fast"] { color: var(--run); }
+  .step [data-kind="walk"], .step [data-kind="warmup"], .step [data-kind="cooldown"] { color: var(--walk); }
+  #stepName { font-size: 18px; font-weight: 600; }
+  #stepLeft { font-size: 56px; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .meta-row { display: flex; justify-content: space-between; color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .bar { height: 4px; background: var(--line); border-radius: 2px; margin: 14px 0; }
+  #progress { height: 4px; width: 0; background: var(--accent); border-radius: 2px; }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .stats div { background: var(--bg); border-radius: 8px; padding: 8px; }
+  .stats span { display: block; font-size: 12px; color: var(--muted); }
+  .stats strong { font-size: 18px; font-variant-numeric: tabular-nums; }
+  ul { list-style: none; padding: 0; margin: 12px 0 0; max-height: 420px; overflow-y: auto; }
+  li { padding: 8px 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: 52px minmax(0, 1fr); column-gap: 8px; }
+  li .time { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 13px; }
+  li .meta { grid-column: 2; color: var(--muted); font-size: 12px; }
+  li.cue { color: var(--muted); }
+  li.coach { font-weight: 500; }
+  li.info { color: #c0392b; }
+  .hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Run Coach simulator</h1>
+  <p class="sub">Fake GPS runs the real workout engine; the server's AI coach talks to you. Turn your volume up.</p>
+
+  <div style="display:grid; gap:16px; align-content:start">
+    <section>
+      <h2>Workout</h2>
+      <label>App key<input id="key" type="password" autocomplete="off" placeholder="APP_API_KEY from .env"></label>
+      <div class="row">
+        <label>Warm up (min)<input id="warmup" type="number" min="0" value="2"></label>
+        <label>Cool down (min)<input id="cooldown" type="number" min="0" value="1"></label>
+        <label>Walk (sec)<input id="walkSec" type="number" min="10" value="60"></label>
+        <label>Run (sec)<input id="runSec" type="number" min="10" value="60"></label>
+        <label>Rounds<input id="rounds" type="number" min="1" value="5"></label>
+        <label>Sim speed<select id="simSpeed"><option value="1">1×</option><option value="2">2×</option><option value="5" selected>5×</option><option value="10">10×</option></select></label>
+        <label>Walk km/h<input id="walkKmh" type="number" step="0.5" value="5.5"></label>
+        <label>Run km/h<input id="runKmh" type="number" step="0.5" value="9"></label>
+      </div>
+      <div class="buttons">
+        <button id="start" class="primary">Start run</button>
+        <button id="pause">Pause</button>
+        <button id="skip">Skip step</button>
+        <button id="stop">Stop</button>
+      </div>
+      <p id="error" class="error"></p>
+    </section>
+
+    <section>
+      <h2>Your why</h2>
+      <div class="row">
+        <label>Name<input id="name" placeholder="Omer"></label>
+        <label>Coach<select id="personality"><option value="friendly">Friendly</option><option value="calm">Calm</option><option value="tough">Tough</option></select></label>
+      </div>
+      <label>Goal<input id="goal" placeholder="Run 5K without stopping by March"></label>
+      <label>Why I run (one per line)<textarea id="why" placeholder="Keep up with my kids&#10;Clear my head after work"></textarea></label>
+      <div class="buttons">
+        <button id="loadProfile">Load</button>
+        <button id="saveProfile">Save</button>
+        <span id="profileStatus" class="hint"></span>
+      </div>
+    </section>
+  </div>
+
+  <section>
+    <div class="step">
+      <div id="stepName">Ready</div>
+      <div id="stepLeft">–</div>
+      <div class="meta-row"><span id="round"></span><span id="next"></span></div>
+    </div>
+    <div class="bar"><div id="progress"></div></div>
+    <div class="stats">
+      <div><span>Time</span><strong id="elapsed">0:00</strong></div>
+      <div><span>Distance</span><strong id="distance">0.00 km</strong></div>
+      <div><span>Pace /km</span><strong id="pace">--:--</strong></div>
+      <div><span>Climb</span><strong id="climb">+0 m</strong></div>
+    </div>
+    <ul id="log"></ul>
+    <p class="hint">Gray lines are instant cues spoken by the "phone". Bold lines come from the AI coach, with the trigger and how long the server took.</p>
+  </section>
+</main>
+<script type="module" src="sim.js"></script>
+</body>
+</html>

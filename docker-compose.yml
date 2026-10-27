@@ -1,0 +1,25 @@
+version: "3.8"
+
+services:
+  run-coach:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    image: run-coach-server
+    container_name: run-coach
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TTS_URL: http://kokoro:8880
+    ports:
+      - "3020:3020"
+    volumes:
+      - /hosted-apps/run-coach:/data
+    depends_on:
+      - kokoro
+
+  # Self-hosted voice: Kokoro TTS on CPU, reachable only from run-coach.
+  kokoro:
+    image: ghcr.io/remsky/kokoro-fastapi-cpu:latest
+    container_name: run-coach-kokoro
+    restart: unless-stopped

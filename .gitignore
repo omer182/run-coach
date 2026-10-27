@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+*.log
+.pnpm-store/
+data/
+apps/server/public/sim.js

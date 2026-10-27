@@ -71,6 +71,7 @@
         <label>Sim speed<select id="simSpeed"><option value="1">1×</option><option value="2">2×</option><option value="5" selected>5×</option><option value="10">10×</option></select></label>
         <label>Walk km/h<input id="walkKmh" type="number" step="0.5" value="5.5"></label>
         <label>Run km/h<input id="runKmh" type="number" step="0.5" value="9"></label>
+        <label>Usual run pace<input id="usualPace" placeholder="6:40" value="6:40"></label>
       </div>
       <div class="buttons">
         <button id="start" class="primary">Start run</button>
@@ -78,6 +79,12 @@
         <button id="skip">Skip step</button>
         <button id="stop">Stop</button>
       </div>
+      <p class="hint">Act out a run while it's going:</p>
+      <div class="buttons">
+        <button id="tired">Get tired (−20%)</button>
+        <button id="strong">Feel strong (+20%)</button>
+      </div>
+      <p class="hint">The coach compares each run round to your first rounds. Change the walk speed above 7 km/h to test "not recovering".</p>
       <p id="error" class="error"></p>
     </section>
 

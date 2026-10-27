@@ -1,4 +1,4 @@
-import type { EngineEvent, PaceStatus, RunState } from './engine';
+import type { EngineEvent, PaceStatus, RunState, Trend, TrendKind } from './engine';
 import { formatClock, formatPace } from './geo';
 import { stepName, type Workout } from './workout';
 
@@ -19,6 +19,7 @@ export type CoachTrigger =
   | 'km_split'
   | 'halfway'
   | 'pace'
+  | 'trend'
   | 'final_minute'
   | 'workout_complete';
 
@@ -38,6 +39,11 @@ export interface CoachSnapshot {
   next?: string;
   lastSplit?: string;
   climbM: number;
+  terrain?: 'uphill' | 'downhill' | 'flat';
+  /** Pace of each finished round's walk and run, oldest first (last 6). */
+  rounds?: { round: number; walk?: string; run?: string }[];
+  /** Set when the trigger is "trend", or the most recent trend otherwise. */
+  trend?: { kind: TrendKind; round?: number; pace: string; baseline?: string; vsBaseline?: string };
   recentLines: string[];
 }
 
@@ -58,6 +64,8 @@ export function coachTriggerFor(event: EngineEvent): CoachTrigger | null {
       return 'halfway';
     case 'pace':
       return 'pace';
+    case 'trend':
+      return 'trend';
     case 'workout_complete':
       return 'workout_complete';
     case 'countdown':
@@ -65,12 +73,48 @@ export function coachTriggerFor(event: EngineEvent): CoachTrigger | null {
   }
 }
 
+function roundSummary(state: RunState): CoachSnapshot['rounds'] {
+  const byRound = new Map<number, { round: number; walk?: string; run?: string }>();
+  for (const s of state.stepStats) {
+    if (s.round == null || s.paceSecPerKm == null) continue;
+    const entry = byRound.get(s.round) ?? { round: s.round };
+    if (s.kind === 'run' || s.kind === 'fast') entry.run = formatPace(s.paceSecPerKm);
+    else if (s.kind === 'walk' || s.kind === 'rest') entry.walk = formatPace(s.paceSecPerKm);
+    byRound.set(s.round, entry);
+  }
+  const rounds = [...byRound.values()].slice(-6);
+  return rounds.length > 0 ? rounds : undefined;
+}
+
+function describeTrend(trend: Trend): NonNullable<CoachSnapshot['trend']> {
+  const pct = trend.delta != null ? Math.round(Math.abs(trend.delta) * 100) : undefined;
+  return {
+    kind: trend.kind,
+    round: trend.step.round,
+    pace: formatPace(trend.step.paceSecPerKm),
+    baseline: trend.baselineSecPerKm != null ? formatPace(trend.baselineSecPerKm) : undefined,
+    vsBaseline: pct != null && trend.delta != null ? `${pct}% ${trend.delta > 0 ? 'slower' : 'faster'}` : undefined,
+  };
+}
+
+export interface SnapshotContext {
+  recentLines?: string[];
+  paceStatus?: PaceStatus;
+  /** The trend that triggered this request; defaults to the run's latest trend if it is recent. */
+  trend?: Trend;
+}
+
+/** Old news isn't worth mentioning: only trends from the last couple of steps. */
+function recentTrend(state: RunState): Trend | undefined {
+  const t = state.lastTrend;
+  return t && state.stepIndex - t.step.index <= 2 ? t : undefined;
+}
+
 export function buildSnapshot(
   state: RunState,
   workout: Workout | null,
   trigger: CoachTrigger,
-  recentLines: string[] = [],
-  paceStatus?: PaceStatus,
+  { recentLines = [], paceStatus, trend = recentTrend(state) }: SnapshotContext = {},
 ): CoachSnapshot {
   const step = state.step;
   const lastSplit = state.splitsSec[state.splitsSec.length - 1];
@@ -100,6 +144,10 @@ export function buildSnapshot(
     next: state.next && stepName(state.next),
     lastSplit: lastSplit != null ? formatClock(lastSplit) : undefined,
     climbM: Math.round(state.climbM),
+    terrain:
+      state.gradePct == null ? undefined : state.gradePct > 2 ? 'uphill' : state.gradePct < -2 ? 'downhill' : 'flat',
+    rounds: roundSummary(state),
+    trend: trend && describeTrend(trend),
     recentLines: recentLines.slice(-5),
   };
 }

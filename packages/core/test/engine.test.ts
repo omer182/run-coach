@@ -150,7 +150,7 @@ describe('cues and snapshots', () => {
     const engine = new WorkoutEngine(walkRun1to1);
     engine.start(T0);
     simulate(engine, 400, 1.8);
-    const snap = buildSnapshot(engine.state(), walkRun1to1, 'periodic', ['a', 'b']);
+    const snap = buildSnapshot(engine.state(), walkRun1to1, 'periodic', { recentLines: ['a', 'b'] });
     expect(snap).toMatchObject({
       trigger: 'periodic',
       workoutName: 'Walk/run 1:1',

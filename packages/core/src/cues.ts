@@ -37,6 +37,7 @@ export function cueText(event: EngineEvent): string | null {
       return 'Workout complete. Great job.';
     case 'halfway':
     case 'pace':
+    case 'trend':
       return null;
   }
 }

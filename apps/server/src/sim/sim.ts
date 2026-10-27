@@ -133,7 +133,7 @@ async function askCoach(trigger: CoachTrigger) {
   if (!engine || coachInFlight) return;
   coachInFlight = true;
   lastCoachSec = simSec;
-  const snapshot = buildSnapshot(engine.state(), workout, trigger, recentLines, lastPaceStatus);
+  const snapshot = buildSnapshot(engine.state(), workout, trigger, { recentLines, paceStatus: lastPaceStatus });
   const started = performance.now();
   try {
     const res = await api<CoachLineResponse>('/api/coach/line', { method: 'POST', body: JSON.stringify({ snapshot }) });
@@ -156,6 +156,10 @@ function handle(events: EngineEvent[]) {
       log('cue', cue);
       say({ kind: 'cue', text: cue });
     }
+    if (event.type === 'trend') {
+      const vs = event.delta != null ? ` (${Math.round(Math.abs(event.delta) * 100)}% ${event.delta > 0 ? 'slower' : 'faster'})` : '';
+      log('info', `Detected: ${event.kind.replace(/_/g, ' ')}${vs}`);
+    }
     if (event.type === 'pace') lastPaceStatus = event.status;
     if (event.type === 'step_start') lastPaceStatus = undefined;
     const trigger = coachTriggerFor(event);
@@ -171,8 +175,8 @@ function step() {
   const kmh = running ? num('runKmh') : num('walkKmh');
   const mps = Math.max(0, (kmh / 3.6) * (1 + (Math.random() - 0.5) * 0.1));
   lat += mps * DEG_PER_M;
-  // Rolling hills every 800 m or so.
-  const altM = 30 + 12 * Math.sin((state.distanceM / 800) * 2 * Math.PI);
+  // Gentle rolling hills, up to about 3% grade.
+  const altM = 30 + 8 * Math.sin((state.distanceM / 1600) * 2 * Math.PI);
   handle(engine.update({ t: T0 + simSec * 1000, lat, lon: 0, altM, accuracyM: 5 }));
 
   const after = engine.state();
@@ -218,7 +222,9 @@ $('start').addEventListener('click', async () => {
   queue.length = 0;
   $('log').replaceChildren();
   workout = readWorkout();
-  engine = new WorkoutEngine(workout);
+  const [m, sec] = $<HTMLInputElement>('usualPace').value.split(':').map(Number);
+  const usual = (m ?? 0) * 60 + (sec ?? 0);
+  engine = new WorkoutEngine(workout, usual > 0 ? { usualRunPaceSecPerKm: usual } : {});
   simSec = 0;
   lat = 0;
   lastCoachSec = -Infinity;
@@ -255,6 +261,14 @@ $('stop').addEventListener('click', () => {
   document.body.dataset.running = 'false';
   log('info', 'Run stopped.');
 });
+
+function nudgeRunSpeed(factor: number, label: string) {
+  const input = $<HTMLInputElement>('runKmh');
+  input.value = (Math.round(Number(input.value) * factor * 2) / 2).toFixed(1);
+  log('info', `${label}: run speed now ${input.value} km/h`);
+}
+$('tired').addEventListener('click', () => nudgeRunSpeed(0.8, 'Getting tired'));
+$('strong').addEventListener('click', () => nudgeRunSpeed(1.2, 'Feeling strong'));
 
 $('simSpeed').addEventListener('change', () => {
   if (engine?.state().status === 'running') setRunning(true);

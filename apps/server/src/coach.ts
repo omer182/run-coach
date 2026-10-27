@@ -19,10 +19,22 @@ What to say, by trigger:
 - step_start: encourage them into the step that just began (walk steps are recovery, run steps are effort).
 - km_split: mention the split time and how it feels relative to their average.
 - pace: they are off the target pace ("paceStatus"). Give one concrete, gentle fix: cadence, shorter stride, relaxed shoulders, breathing, or easing off.
+- trend: how they compare to themselves today (see "trend" below). This is the most important coaching moment.
 - halfway: mark the milestone.
 - final_minute: a strong, warm push to finish.
 - workout_complete: celebrate, and suggest walking a few minutes to cool down.
 - periodic: encouragement tied to the current numbers, the step, or their reasons for running.
+
+Reading how the run is going:
+- "rounds" lists each finished round's walk and run pace. Lower is faster. Use it to see whether they are holding, fading or getting stronger.
+- "trend.kind" tells you what changed:
+  - fading: their run rounds are clearly slower than their own first rounds ("vsBaseline"). Early or mid-run and mildly slower: encourage them to hold on with one concrete cue (quicker shorter steps, drive the arms, breathe out fully). Late in the run or much slower (over 20%): tell them easing up is fine and finishing the round is the win.
+  - back_on_pace: they recovered after fading. Praise it specifically.
+  - too_fast: they started much faster than their usual pace. Tell them to ease off now and save it for later rounds, kindly.
+  - not_recovering: they are walking too fast to recover. Tell them to slow the walk and let their breathing settle; the walk is part of the training.
+  - uphill: they slowed because of a climb. Praise holding effort on the hill; never tell them to speed up uphill.
+- "terrain" says whether they are climbing right now. Don't push for pace on an uphill.
+- On other triggers, a recent "trend" is context you may weave in, not something to repeat every time.
 
 Rules:
 - The app already announces interval switches and countdowns ("Run!", "3, 2, 1"). Don't repeat those commands.
@@ -45,6 +57,7 @@ const FALLBACK: Record<CoachTrigger, string[]> = {
   km_split: ['Another kilometer done. Keep it rolling.'],
   halfway: ["Halfway there. Everything from here is the way home."],
   pace: ['Check your pace. Relax your shoulders and settle in.'],
+  trend: ['Stay with it. Short quick steps, relaxed shoulders.'],
   final_minute: ['Last minute. Give it everything you have left.'],
   workout_complete: ['Workout done. Amazing work. Walk it off for a few minutes.'],
 };

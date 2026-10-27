@@ -21,6 +21,7 @@ const TRIGGERS = new Set<CoachTrigger>([
   'km_split',
   'halfway',
   'pace',
+  'trend',
   'final_minute',
   'workout_complete',
 ]);

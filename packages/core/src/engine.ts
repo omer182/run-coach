@@ -1,5 +1,5 @@
 import { haversineM } from './geo';
-import { flatten, plannedDurationSec, type FlatStep, type PaceTarget, type Workout } from './workout';
+import { flatten, plannedDurationSec, type FlatStep, type PaceTarget, type StepKind, type Workout } from './workout';
 
 export interface LocationSample {
   /** Epoch milliseconds. */
@@ -12,12 +12,42 @@ export interface LocationSample {
 
 export type PaceStatus = 'slow' | 'fast' | 'on_target';
 
+/** How one finished step went. */
+export interface StepStat {
+  index: number;
+  kind: StepKind;
+  round?: number;
+  durationSec: number;
+  distanceM: number;
+  paceSecPerKm: number | null;
+  climbM: number;
+}
+
+/**
+ * How the runner is doing compared to themselves:
+ * - fading: run steps getting clearly slower than this run's first rounds
+ * - back_on_pace: recovered after fading
+ * - too_fast: early run steps much faster than their usual pace
+ * - not_recovering: walk steps so fast they aren't recovery
+ * - uphill: a slow run step that was mostly climbing, which is fine
+ */
+export type TrendKind = 'fading' | 'back_on_pace' | 'too_fast' | 'not_recovering' | 'uphill';
+
+export interface Trend {
+  kind: TrendKind;
+  step: StepStat;
+  baselineSecPerKm?: number;
+  /** Positive = slower than baseline, as a fraction (0.12 = 12% slower). */
+  delta?: number;
+}
+
 export type EngineEvent =
   | { type: 'step_start'; step: FlatStep; next?: FlatStep }
   | { type: 'countdown'; secondsLeft: number; next?: FlatStep }
   | { type: 'km_split'; km: number; splitSec: number }
   | { type: 'halfway' }
   | { type: 'pace'; status: PaceStatus; paceSecPerKm: number; target: PaceTarget }
+  | ({ type: 'trend' } & Trend)
   | { type: 'workout_complete' };
 
 export interface RunState {
@@ -39,9 +69,15 @@ export interface RunState {
   stepRemainingSec?: number;
   stepRemainingM?: number;
   plannedSec: number;
+  stepStats: StepStat[];
+  /** Grade over the last ~30 s in percent; positive is uphill. */
+  gradePct: number | null;
+  lastTrend?: Trend;
 }
 
 export interface EngineOptions {
+  /** The runner's normal run pace from past runs; enables "too fast" warnings. */
+  usualRunPaceSecPerKm?: number;
   /** Samples less accurate than this are ignored. */
   maxAccuracyM?: number;
   /** Faster than this between two samples is a GPS jump, not running. */
@@ -51,15 +87,41 @@ export interface EngineOptions {
   elevationThresholdM?: number;
   /** Minimum gap between repeated "still off pace" events. */
   paceRepeatSec?: number;
+  /** A run step this much slower than the run's baseline counts as fading. */
+  fadeFraction?: number;
+  /** An early run step this much faster than the usual pace counts as too fast. */
+  tooFastFraction?: number;
+  /** Walk steps faster than this (sec/km) aren't recovery. 510 = 7 km/h. */
+  recoveryPaceSecPerKm?: number;
+  /** Climb per distance above which a run step counts as uphill. */
+  hillGrade?: number;
+  /** Steps between repeats of the same trend, so the coach doesn't nag. */
+  trendRepeatSteps?: number;
 }
 
-const DEFAULTS: Required<EngineOptions> = {
+type ResolvedOptions = Required<Omit<EngineOptions, 'usualRunPaceSecPerKm'>> &
+  Pick<EngineOptions, 'usualRunPaceSecPerKm'>;
+
+const DEFAULTS: ResolvedOptions = {
   maxAccuracyM: 30,
   maxSpeedMps: 12,
   paceWindowSec: 30,
   elevationThresholdM: 2,
   paceRepeatSec: 45,
+  fadeFraction: 0.08,
+  tooFastFraction: 0.1,
+  recoveryPaceSecPerKm: 510,
+  hillGrade: 0.03,
+  trendRepeatSteps: 4,
 };
+
+const isRunKind = (kind: StepKind) => kind === 'run' || kind === 'fast';
+
+function median(values: number[]): number {
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+}
 
 /**
  * Runs a workout against location samples. It advances on whatever clock the caller
@@ -67,7 +129,7 @@ const DEFAULTS: Required<EngineOptions> = {
  * is locked but keeps delivering location updates.
  */
 export class WorkoutEngine {
-  private readonly opts: Required<EngineOptions>;
+  private readonly opts: ResolvedOptions;
   private readonly steps: FlatStep[];
   private readonly plannedSec: number;
 
@@ -79,7 +141,7 @@ export class WorkoutEngine {
   private descentM = 0;
   private lastPoint: LocationSample | null = null;
   private altAnchor: number | null = null;
-  private window: { sec: number; m: number }[] = [];
+  private window: { sec: number; m: number; alt?: number }[] = [];
   private splitsSec: number[] = [];
   private lastSplitSec = 0;
 
@@ -91,6 +153,9 @@ export class WorkoutEngine {
   private lastPaceEventSec = -Infinity;
   private halfwayDone = false;
   private workoutDone = false;
+  private stepStartClimb = 0;
+  private stepStats: StepStat[] = [];
+  private lastTrend: Trend | undefined;
 
   constructor(workout: Workout | null, options: EngineOptions = {}) {
     this.opts = { ...DEFAULTS, ...options };
@@ -135,6 +200,7 @@ export class WorkoutEngine {
     if (this.status === 'running' && !this.workoutDone) {
       this.stepStartSec = this.elapsedSec();
       this.stepStartM = this.distanceM;
+      this.stepStartClimb = this.climbM;
       this.advance(events);
     }
     return events;
@@ -153,10 +219,10 @@ export class WorkoutEngine {
       const dt = (sample.t - prev.t) / 1000;
       if (dt > 0 && d / dt <= this.opts.maxSpeedMps) {
         this.distanceM += d;
-        this.window.push({ sec: this.elapsedSec(), m: this.distanceM });
+        this.window.push({ sec: this.elapsedSec(), m: this.distanceM, alt: sample.altM });
       }
     } else {
-      this.window.push({ sec: this.elapsedSec(), m: this.distanceM });
+      this.window.push({ sec: this.elapsedSec(), m: this.distanceM, alt: sample.altM });
     }
     this.trackElevation(sample.altM);
     return this.evaluate();
@@ -202,6 +268,9 @@ export class WorkoutEngine {
           ? Math.max(0, step.distanceM - (this.distanceM - this.stepStartM))
           : undefined,
       plannedSec: this.plannedSec,
+      stepStats: [...this.stepStats],
+      gradePct: this.rollingGradePct(),
+      lastTrend: this.lastTrend,
     };
   }
 
@@ -237,10 +306,12 @@ export class WorkoutEngine {
       const stepElapsed = this.elapsedSec() - this.stepStartSec;
       const stepM = this.distanceM - this.stepStartM;
       if (step.durationSec != null && stepElapsed >= step.durationSec) {
+        this.finishStep(step, step.durationSec, stepM, events);
         // Keep boundaries exact so rounding never drifts across many intervals.
         this.stepStartSec += step.durationSec;
         this.stepStartM = this.distanceM;
       } else if (step.distanceM != null && stepM >= step.distanceM) {
+        this.finishStep(step, stepElapsed, step.distanceM, events);
         this.stepStartSec = this.elapsedSec();
         this.stepStartM += step.distanceM;
       } else {
@@ -270,12 +341,66 @@ export class WorkoutEngine {
     if (index === 0) {
       this.stepStartSec = this.elapsedSec();
       this.stepStartM = this.distanceM;
+      this.stepStartClimb = this.climbM;
     }
     this.lastCountdown = Infinity;
     this.paceStatus = null;
     this.lastPaceEventSec = -Infinity;
     const step = this.steps[index]!;
     events.push({ type: 'step_start', step, next: this.steps[index + 1] });
+  }
+
+  private finishStep(step: FlatStep, durationSec: number, distanceM: number, events: EngineEvent[]): void {
+    const stat: StepStat = {
+      index: step.index,
+      kind: step.kind,
+      round: step.round,
+      durationSec,
+      distanceM,
+      paceSecPerKm: distanceM >= 20 ? (durationSec / distanceM) * 1000 : null,
+      climbM: this.climbM - this.stepStartClimb,
+    };
+    this.stepStartClimb = this.climbM;
+    const trend = this.assess(stat);
+    this.stepStats.push(stat);
+    if (!trend) return;
+    const last = this.lastTrend;
+    const repeat = last?.kind === trend.kind && stat.index - last.step.index < this.opts.trendRepeatSteps;
+    if (repeat) return;
+    this.lastTrend = trend;
+    events.push({ type: 'trend', ...trend });
+  }
+
+  /** Compares a finished step with the runner's own earlier steps (and usual pace, when known). */
+  private assess(stat: StepStat): Trend | null {
+    const pace = stat.paceSecPerKm;
+    if (pace == null || stat.distanceM < 50) return null;
+
+    if (stat.kind === 'walk' || stat.kind === 'rest') {
+      return pace < this.opts.recoveryPaceSecPerKm ? { kind: 'not_recovering', step: stat } : null;
+    }
+    if (!isRunKind(stat.kind)) return null;
+
+    const priorRuns = this.stepStats.filter(s => isRunKind(s.kind) && s.paceSecPerKm != null);
+    const uphill = stat.climbM / stat.distanceM >= this.opts.hillGrade;
+    const usual = this.opts.usualRunPaceSecPerKm;
+
+    if (usual && priorRuns.length < 2 && pace < usual * (1 - this.opts.tooFastFraction)) {
+      return { kind: 'too_fast', step: stat, baselineSecPerKm: usual, delta: (pace - usual) / usual };
+    }
+    if (priorRuns.length < 2) return null;
+
+    // Baseline = how this runner ran the first rounds of today's run.
+    const baseline = median(priorRuns.slice(0, 3).map(s => s.paceSecPerKm!));
+    const delta = (pace - baseline) / baseline;
+    if (delta >= this.opts.fadeFraction) {
+      // Slower on a climb is expected, not fading.
+      return { kind: uphill ? 'uphill' : 'fading', step: stat, baselineSecPerKm: baseline, delta };
+    }
+    if (this.lastTrend?.kind === 'fading' && delta < this.opts.fadeFraction / 2) {
+      return { kind: 'back_on_pace', step: stat, baselineSecPerKm: baseline, delta };
+    }
+    return null;
   }
 
   private countdown(events: EngineEvent[]): void {
@@ -311,10 +436,22 @@ export class WorkoutEngine {
     this.paceStatus = status;
   }
 
-  private rollingPace(): number | null {
-    const now = this.elapsedSec();
-    const cutoff = now - this.opts.paceWindowSec;
+  private trimWindow(): void {
+    const cutoff = this.elapsedSec() - this.opts.paceWindowSec;
     while (this.window.length > 1 && this.window[1]!.sec <= cutoff) this.window.shift();
+  }
+
+  private rollingGradePct(): number | null {
+    this.trimWindow();
+    const withAlt = this.window.filter(w => w.alt != null);
+    const first = withAlt[0];
+    const last = withAlt[withAlt.length - 1];
+    if (!first || !last || last.m - first.m < 30) return null;
+    return ((last.alt! - first.alt!) / (last.m - first.m)) * 100;
+  }
+
+  private rollingPace(): number | null {
+    this.trimWindow();
     const first = this.window[0];
     const last = this.window[this.window.length - 1];
     if (!first || !last) return null;

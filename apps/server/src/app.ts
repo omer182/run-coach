@@ -1,5 +1,6 @@
 import { timingSafeEqual } from 'node:crypto';
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import type { CoachLineResponse, CoachSnapshot, CoachTrigger } from '@run-coach/core';
 import { fallbackLine, type CoachWriter } from './coach';
 import { parseProfile, type ProfileStore } from './profile';
@@ -35,6 +36,9 @@ function sameSecret(given: string, expected: string): boolean {
 export function createApp(deps: AppDeps): Hono {
   const log = deps.log ?? console.log;
   const app = new Hono();
+
+  // The browser build of the app runs on another port; the app key still guards every call.
+  app.use('/api/*', cors({ origin: '*', allowHeaders: ['Authorization', 'Content-Type'], allowMethods: ['GET', 'POST', 'PUT'] }));
 
   app.get('/api/health', c => c.json({ ok: true, tts: deps.speaker != null }));
 

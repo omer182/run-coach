@@ -8,7 +8,7 @@ Self-hosted running app with a live AI coach. PRD: https://claude.ai/artifact/S6
 | --- | --- |
 | `packages/core` | Workout model, interval engine, instant cues, coach snapshot. Shared by the phone app, server and simulator. |
 | `apps/server` | Hono API: AI coach lines (Claude) + voice (Kokoro TTS), runner profile, and the browser run simulator. |
-| `apps/mobile` | Expo iPhone app (Phase 2, not started). |
+| `apps/mobile` | Expo iPhone app: live run screen, workout builder, history with map/elevation. See [apps/mobile/README.md](apps/mobile/README.md) to install it on your iPhone. |
 
 The engine advances only on the timestamps it's given (GPS updates), never on its own timers, because iOS pauses JS timers when the screen is locked.
 

@@ -230,7 +230,14 @@ $('start').addEventListener('click', async () => {
   lastCoachSec = -Infinity;
   finalMinuteDone = false;
   recentLines.length = 0;
-  handle(engine.start(T0));
+  // Speak the first cue but let the welcome line, not step_start, take the first coach slot.
+  for (const event of engine.start(T0)) {
+    const cue = cueText(event);
+    if (cue) {
+      log('cue', cue);
+      say({ kind: 'cue', text: cue });
+    }
+  }
   void askCoach('start');
   render();
   setRunning(true);

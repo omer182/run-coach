@@ -5,3 +5,7 @@ dist/
 .pnpm-store/
 data/
 apps/server/public/sim.js
+apps/mobile/dist-web/
+apps/mobile/ios/
+apps/mobile/android/
+apps/mobile/.expo/

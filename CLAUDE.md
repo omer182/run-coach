@@ -36,7 +36,9 @@ Then a real-world test run, checking the unverified items above.
 - Secrets live in `.env` on the server (git-ignored). Never commit or print `ANTHROPIC_API_KEY` / `APP_API_KEY`.
 - Commits are authored as `Omer Sher <omer182@gmail.com>`.
 
-## Home server (where the backend runs)
+## Home server (old backend host — stopped 2026-10-28)
+
+The owner moved development to the Mac; the containers below are **stopped** on the home server (not removed). Restart there with `docker-compose up -d` if needed.
 
 - LAN IP `192.168.0.147`, repo at `~/projects/run-coach`, data in `/hosted-apps/run-coach`.
 - Containers: `run-coach` (:3020), `run-coach-kokoro`, `run-coach-web-preview` (:8095, static web build for browser testing).
@@ -46,4 +48,12 @@ Then a real-world test run, checking the unverified items above.
 
 ## On the Mac
 
-Node is native there: `pnpm install`, `pnpm test`, `pnpm typecheck` from the repo root. The server stays on the home server; don't run it locally unless needed.
+Node is native there: `pnpm install`, `pnpm test`, `pnpm typecheck` from the repo root.
+
+The backend now runs on the Mac too:
+
+1. Get `.env` (holds the keys, never in git) from the home server: `scp rio@192.168.0.147:~/projects/run-coach/.env .` then `chmod 600 .env`. If that's not reachable, `cp .env.example .env` and fill in an Anthropic key and a new `APP_API_KEY` (16+ chars; the phone's Settings must use the same one).
+2. Install Docker Desktop (Intel build), then `docker compose up -d --build` from the repo root. It starts the server on :3020 and Kokoro TTS (CPU image, amd64 — fine on Intel). Change the data volume in `docker-compose.yml` from `/hosted-apps/run-coach` to a Mac path such as `./data` (already git-ignored).
+3. Check: `curl localhost:3020/api/health` → `{"ok":true,"tts":true}`.
+4. In the iPhone app's Settings, set the server address to `http://<Mac's LAN IP>:3020` (`ipconfig getifaddr en0`). The Mac must be awake and on the same Wi-Fi.
+5. Profile ("why", name, goal) was stored on the home server in `/hosted-apps/run-coach/profile.json`; copy it into the new data folder to keep it.

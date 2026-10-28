@@ -19,16 +19,29 @@ You need: the Mac, a USB cable, and the iPhone. About 30 minutes the first time.
 ### 1. Mac setup (once)
 
 1. Update macOS as far as it goes: Apple menu → System Settings → General → Software Update.
-2. Install **Xcode 26.4 or newer** from the App Store (Expo SDK 58 needs it). Open it once and let it install its components.
+2. Install **Xcode 26.4 or newer** from the App Store (Expo SDK 58 needs it). Open it once; when it asks which platforms to download, tick **iOS** and let it finish.
    - If the App Store says your macOS is too old for this Xcode, stop here and tell Claude: the fix is either an older Expo SDK or the paid Apple account with cloud builds.
-3. Install Node 22 and git: install [Homebrew](https://brew.sh), then:
+3. Point the command-line tools at that Xcode (asks for your Mac password):
 
    ```bash
-   brew install node@22 git gh
+   sudo xcode-select -s /Applications/Xcode.app && sudo xcodebuild -license accept
    ```
 
-4. Turn on pnpm: `corepack enable`
-5. In Xcode: **Settings → Accounts → +** → add your Apple ID. This creates a free "Personal Team".
+4. Install [Homebrew](https://brew.sh), then Node 22, git, the GitHub CLI and CocoaPods:
+
+   ```bash
+   brew install node@22 git gh cocoapods
+   ```
+
+   Homebrew doesn't put `node@22` on your PATH by itself:
+
+   ```bash
+   echo 'export PATH="$(brew --prefix node@22)/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
+   node -v   # should print v22.x
+   ```
+
+5. Turn on pnpm: `corepack enable`
+6. In Xcode: **Settings → Accounts → +** → add your Apple ID. This creates a free "Personal Team".
 
 ### 2. iPhone setup (once)
 
@@ -46,6 +59,7 @@ cd apps/mobile
 npx expo run:ios --device --configuration Release
 ```
 
+- The first build on an Intel Mac takes roughly 15–30 minutes. Later builds are much faster.
 - Pick your iPhone from the list.
 - **Release** puts the whole app on the phone, so it runs without the Mac nearby.
 - If it stops with a signing error: open `ios/RunCoach.xcworkspace` in Xcode, click the **RunCoach** target → **Signing & Capabilities** → Team: your Personal Team. Close Xcode and run the command again.
@@ -53,7 +67,7 @@ npx expo run:ios --device --configuration Release
 
 ### 4. First run setup in the app
 
-1. **Settings** in the app → Coach server address `http://192.168.0.147:3020` and the app key (`grep APP_API_KEY .env` on the server) → **Test connection**.
+1. **Settings** in the app → Coach server address `http://192.168.0.147:3020` and the app key → **Test connection**. To get the key without typing it: on the Mac run `ssh rio@192.168.0.147 'grep APP_API_KEY ~/projects/run-coach/.env'`, copy the value, and paste it on the iPhone (Universal Clipboard works when both are signed into the same Apple ID).
 2. Optionally load and fill in **Your why**.
 3. Start a run. When iOS asks for location, choose **Allow While Using**, then **Change to Always Allow** when asked. "Always" keeps recording with the phone locked in your pocket.
 
